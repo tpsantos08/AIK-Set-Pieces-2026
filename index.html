@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AIK Set Pieces Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:monospace;background:#f5f5f5;padding:1rem}
+.wrap{max-width:900px;margin:0 auto}
+h1{font-size:22px;font-weight:900;letter-spacing:.15em;text-align:center;margin-bottom:4px}
+.sub{font-size:10px;color:#999;letter-spacing:.1em;text-align:center;margin-bottom:1.5rem}
+
+/* Loading / error states */
+.state-box{text-align:center;padding:3rem 1rem;color:#bbb;font-size:13px;letter-spacing:.06em}
+.state-box.err{color:#CC2211;font-weight:700}
+.spinner{display:inline-block;width:20px;height:20px;border:2px solid #ddd;border-top-color:#000;border-radius:50%;animation:spin .7s linear infinite;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Tabs */
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:1rem;justify-content:center}
+.sp-t{cursor:pointer;padding:6px 13px;border:2px solid #000;background:transparent;color:#000;font-size:10px;font-family:monospace;font-weight:900;letter-spacing:.08em}
+.sp-t:hover,.sp-t.on{background:#000;color:#FFD700}
+
+/* Side filter */
+.side-bar{background:#fff;border:2px solid #000;border-radius:8px;padding:10px 20px;display:flex;justify-content:center;align-items:center;gap:16px;margin-bottom:1.25rem}
+.side-label{color:#999;font-size:9px;font-weight:700;letter-spacing:.15em}
+.sf-b{cursor:pointer;padding:8px 28px;border:2px solid #000;background:#fff;color:#333;font-size:12px;font-family:monospace;font-weight:900;letter-spacing:.12em}
+.sf-b.on{background:#000;color:#FFD700;border-color:#000}
+.sf-b:not(.on):hover{background:#f5f5f5}
+
+/* Stat cards */
+.stats-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:1.25rem}
+.sc{background:#f5f5f5;border:1px solid #e8e8e8;border-radius:4px;padding:8px 16px;text-align:center;min-width:58px}
+.sc-l{font-size:9px;color:#aaa;letter-spacing:.08em;margin-bottom:2px}
+.sc-v{font-size:24px;font-weight:900;line-height:1}
+
+/* Panel */
+.panel{border:2px solid #000;border-radius:8px;overflow:hidden;max-width:660px;margin:0 auto}
+.panel-hdr{padding:10px 16px;background:#000}
+.panel-hdr span{font-size:12px;font-weight:900;color:#FFD700;letter-spacing:.1em}
+.panel-body{padding:12px 16px}
+
+/* Legend */
+.enc-leg{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.grad-bar{width:60px;height:12px;background:linear-gradient(to right,rgb(60,60,60),rgb(210,210,210));border-radius:2px;display:inline-block;vertical-align:middle}
+.leg-swatch{width:18px;height:12px;display:inline-block;background:rgba(0,0,0,.03);border-radius:2px;vertical-align:middle}
+
+/* Zone breakdown */
+.zone-row{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #f0f0f0}
+.zone-id{font-size:13px;font-weight:900;min-width:26px;color:#000}
+.zone-bar-wrap{flex:1;height:5px;background:#eee;border-radius:2px}
+.zone-bar{height:100%;border-radius:2px}
+.zone-stat{font-size:11px;color:#999;min-width:90px;text-align:right}
+
+/* FC row */
+.fc-row{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.fc-pct{font-size:28px;font-weight:900;line-height:1}
+.fc-raw{font-size:13px;color:#ccc}
+.fc-bar-wrap{flex:1;height:6px;background:#eee;border-radius:3px}
+.fc-bar{height:100%;border-radius:3px}
+
+/* Delivery breakdown */
+.del-box{border:2px solid #000;border-radius:8px;overflow:hidden;max-width:660px;margin:0 auto;margin-top:1rem}
+.del-hdr{padding:8px 16px;background:#000}
+.del-hdr span{font-size:11px;font-weight:900;color:#FFD700;letter-spacing:.1em}
+.del-hdr small{font-size:9px;color:rgba(255,215,0,0.4);margin-left:10px}
+table.del-tbl{width:100%;border-collapse:collapse}
+table.del-tbl th{padding:8px 16px;font-size:9px;font-weight:700;color:#aaa;letter-spacing:.1em;border-bottom:1px solid #eee}
+table.del-tbl td{padding:10px 16px;border-bottom:1px solid #f5f5f5}
+table.del-tbl td.type-cell{font-size:10px;font-weight:900;color:#000;letter-spacing:.06em;white-space:nowrap}
+.del-pct{font-size:22px;font-weight:900;line-height:1;display:block;text-align:center}
+.del-raw{font-size:10px;color:#aaa;display:block;text-align:center;margin-top:2px}
+
+/* Player section */
+.player-section{max-width:660px;margin:0 auto}
+.player-box{border:2px solid #000;border-radius:8px;overflow:hidden;margin-top:1rem}
+.player-hdr{padding:8px 16px;background:#000;display:flex;align-items:baseline;gap:8px}
+.player-hdr span{font-size:11px;font-weight:900;color:#FFD700;letter-spacing:.1em}
+.player-hdr small{font-size:9px;color:rgba(255,215,0,0.4)}
+.player-tbl-wrap{overflow-x:auto}
+table.player-tbl{width:100%;border-collapse:collapse;min-width:420px}
+table.player-tbl th{padding:7px 12px;font-size:9px;font-weight:700;color:#bbb;letter-spacing:.08em;border-bottom:2px solid #eee;white-space:nowrap}
+table.player-tbl td{padding:9px 12px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+
+/* Last updated badge */
+.updated{font-size:9px;color:#bbb;letter-spacing:.06em;text-align:center;margin-top:1.5rem;padding-bottom:1rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>AIK SET PIECES</h1>
+  <div class="sub" id="subtitle">ALLSVENSKAN 2026</div>
+
+  <div id="stateBox" class="state-box">
+    <div class="spinner"></div>
+    <div>Loading data...</div>
+  </div>
+
+  <div id="dashWrap" style="display:none">
+    <div class="tabs" id="tabs"></div>
+    <div class="side-bar">
+      <span class="side-label">SIDE</span>
+      <div style="display:flex;gap:6px">
+        <button class="sf-b on" data-s="L" onclick="setSide('L')">LEFT</button>
+        <button class="sf-b" data-s="R" onclick="setSide('R')">RIGHT</button>
+      </div>
+    </div>
+    <div id="main"></div>
+    <div id="players" style="margin-top:1.5rem"></div>
+    <div class="updated" id="lastUpdated"></div>
+  </div>
+</div>
+
+<script>
+const YEL='#FFD700',GRN='#22AA44',AMB='#FF8800',RED='#CC2211';
+const TABS=[
+  {k:'OC',l:'OFF CORNERS',   isOff:true, isCor:true},
+  {k:'DC',l:'DEF CORNERS',   isOff:false,isCor:true},
+  {k:'OF',l:'OFF FREE KICKS',isOff:true, isCor:false},
+  {k:'DF',l:'DEF FREE KICKS',isOff:false,isCor:false},
+];
+let D=[],act='OC',sideF='L';
+
+// ── Parse a single CSV row ────────────────────────────────────────
+function parseRow(row){
+  const i=row.Ungrouped||'',t=row.Row||'';
+  return{t,i,
+    isOff:t.startsWith('OFF'),isCor:t.includes('CORNER'),
+    side:i.includes('Right Side')?'R':'L',
+    swing:i.includes('Inswing')?'Inswing':i.includes('Outswing')?'Outswing':'Short',
+    isShort:i.toLowerCase().includes('short'),
+    zone:(m=>m?'A'+m[1]:null)(i.match(/\bA(\d)\b/)),
+    fcW:i.includes('First Contact Won'),shot:i.includes('Shot'),
+    goal:i.includes('Goal'),sb:i.includes('2nd ball'),
+    player:(i.match(/[A-Z]\. [A-Z][a-z]+/)||[null])[0]
+  };
+}
+
+// ── Auto-fetch data.csv from same directory ───────────────────────
+async function loadData(){
+  try{
+    // Cache-bust so GitHub Pages always serves the latest file
+    const res=await fetch('./data.csv?v='+Date.now());
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const text=await res.text();
+    Papa.parse(text,{
+      header:true,
+      skipEmptyLines:true,
+      complete(results){
+        const rows=results.data.filter(r=>r.Row&&(r.Row.includes('CORNER')||r.Row.includes('SFK')));
+        if(!rows.length){
+          showError('data.csv found but no set piece rows detected. Check the Row column.');
+          return;
+        }
+        D=rows.map(parseRow);
+
+        // Season label from Timeline column
+        const timelines=[...new Set(results.data.map(r=>r.Timeline).filter(Boolean))];
+        if(timelines.length) document.getElementById('subtitle').textContent=timelines.slice(0,4).join(' · ');
+
+        // Last updated
+        document.getElementById('lastUpdated').textContent='DATA LOADED · '+D.length+' INSTANCES';
+
+        document.getElementById('stateBox').style.display='none';
+        document.getElementById('dashWrap').style.display='block';
+        buildTabs();
+        renderMain();
+        renderPlayers();
+      },
+      error(err){showError('Could not parse data.csv: '+err.message);}
+    });
+  }catch(err){
+    showError('Could not load data.csv — make sure it is in the same folder as index.html in your repository.<br><br>Error: '+err.message);
+  }
+}
+
+function showError(msg){
+  const b=document.getElementById('stateBox');
+  b.classList.add('err');
+  b.innerHTML=msg;
+}
+
+loadData();
+
+// ── Helpers ───────────────────────────────────────────────────────
+function fcColor(p){return p>=.75?GRN:p>=.5?YEL:p>=.25?AMB:RED;}
+function zs(items){
+  const s={};
+  items.forEach(d=>{
+    if(!d.zone)return;
+    s[d.zone]=s[d.zone]||{n:0,w:0,sh:0,g:0,sb:0};
+    s[d.zone].n++;if(d.fcW)s[d.zone].w++;if(d.shot)s[d.zone].sh++;
+    if(d.goal)s[d.zone].g++;if(d.sb)s[d.zone].sb++;
+  });
+  return s;
+}
+function maxN(st){const v=Object.values(st).map(s=>s.n);return v.length?Math.max(...v):1;}
+function zFill(n,mn){if(!n||!mn)return null;const t=n/mn,v=Math.round(210-150*t);return{rgb:`rgb(${v},${v},${v})`,dark:v<130};}
+function zBorder(s){if(!s||!s.n)return'#ccc';return fcColor(s.w/s.n);}
+
+// ── Football icon ─────────────────────────────────────────────────
+let _bid=0;
+function football(cx,cy,r){
+  const id='b'+(_bid++);
+  function pt(pcx,pcy,pr,rotDeg){
+    const pts=[];
+    for(let i=0;i<5;i++){const a=(rotDeg+i*72)*Math.PI/180;pts.push(`${(pcx+pr*Math.cos(a)).toFixed(2)},${(pcy+pr*Math.sin(a)).toFixed(2)}`);}
+    return pts.join(' ');
+  }
+  let s=`<defs><clipPath id="${id}"><circle cx="${cx}" cy="${cy}" r="${r-0.8}"/></clipPath></defs>`;
+  s+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff" stroke="#222" stroke-width="1.5"/>`;
+  s+=`<g clip-path="url(#${id})">`;
+  s+=`<polygon points="${pt(cx,cy,r*0.37,-90)}" fill="#111"/>`;
+  for(let i=0;i<5;i++){const a=(-90+36+i*72)*Math.PI/180,d=r*0.84;s+=`<polygon points="${pt(cx+d*Math.cos(a),cy+d*Math.sin(a),r*0.37,-90+36+i*72)}" fill="#111"/>`;}
+  s+=`</g><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#222" stroke-width="1.5"/>`;
+  return s;
+}
+
+// ── Pitch constants ───────────────────────────────────────────────
+const PW=660,H_SVG=420,GL=30,CX=330;
+const paL=106,paR=554,paBot=214,sbL=228,sbR=433,sbBot=91;
+const goalL=265,goalR=395,spotY=152,arcR=102,arcDx=81,ftLine=420;
+
+const CZ=[
+  {id:'A7',x:138,y:GL,   w:90,h:spotY-GL},
+  {id:'A1',x:228,y:GL,   w:68,h:sbBot-GL},
+  {id:'A2',x:296,y:GL,   w:69,h:sbBot-GL},
+  {id:'A3',x:365,y:GL,   w:68,h:sbBot-GL},
+  {id:'A8',x:433,y:GL,   w:90,h:spotY-GL},
+  {id:'A4',x:228,y:sbBot,w:68,h:spotY-sbBot},
+  {id:'A5',x:296,y:sbBot,w:69,h:spotY-sbBot},
+  {id:'A6',x:365,y:sbBot,w:68,h:spotY-sbBot},
+  {id:'A9',x:228,y:spotY,w:205,h:105},
+];
+const FZ=[
+  {id:'A4',x:228,y:GL,   w:205,h:sbBot-GL},
+  {id:'A1',x:150,y:sbBot,w:130,h:220},
+  {id:'A2',x:280,y:sbBot,w:100,h:220},
+  {id:'A3',x:380,y:sbBot,w:130,h:220},
+];
+
+function mirrorZones(z){return z.map(z=>({...z,x:PW-z.x-z.w}));}
+function ballRight(side,isOff){return(isOff&&side==='R')||(!isOff&&side==='L');}
+function getZones(isCor,side,isOff){return ballRight(side,isOff)?mirrorZones(isCor?CZ:FZ):isCor?CZ:FZ;}
+
+function zr(x,y,w,h,id,st,mn){
+  const s=st[id],n=s?s.n:0,p=n?Math.round(s.w/s.n*100):null;
+  const f=zFill(n,mn),bC=zBorder(s),bW=n?2.5:1;
+  const fs=h<50?12:h<90?14:w>=130?17:w>=80?15:13;
+  if(!n)return`<rect x="${x+1}" y="${y+1}" width="${w-2}" height="${h-2}" rx="2" fill="none" stroke="#ccc" stroke-width="1" stroke-dasharray="5,4"/><text x="${x+w/2}" y="${y+h/2+5}" text-anchor="middle" fill="#ccc" font-size="${fs}" font-weight="900" font-family="monospace">${id}</text>`;
+  const tC=f.dark?'#fff':'#111',nTxtC=f.dark?'rgba(255,255,255,0.5)':'rgba(0,0,0,0.4)';
+  let o=`<rect x="${x+1}" y="${y+1}" width="${w-2}" height="${h-2}" rx="2" fill="${f.rgb}" fill-opacity="0.72" stroke="${bC}" stroke-width="${bW}"/>`;
+  if(h>=40){
+    o+=`<text x="${x+w/2}" y="${y+h/2-3}" text-anchor="middle" fill="${tC}" font-size="${fs}" font-weight="900" font-family="monospace">${id}</text>`;
+    o+=`<text x="${x+w/2}" y="${y+h/2+13}" text-anchor="middle" fill="${bC}" font-size="${Math.min(fs,13)}" font-weight="900" font-family="monospace">${p}%</text>`;
+    if(h>70)o+=`<text x="${x+w/2}" y="${y+h/2+28}" text-anchor="middle" fill="${nTxtC}" font-size="11" font-family="monospace">n=${s.n}</text>`;
+  } else {
+    o+=`<text x="${x+w/2}" y="${y+h/2+5}" text-anchor="middle" fill="${tC}" font-size="${fs}" font-weight="900" font-family="monospace">${id}</text>`;
+  }
+  return o;
+}
+
+function makeSVG(items,isCor,side,isOff){
+  const st=zs(items),mn=maxN(st),bR=ballRight(side,isOff),zones=getZones(isCor,side,isOff);
+  let s=`<svg viewBox="0 0 ${PW} ${H_SVG}" width="100%" overflow="hidden" style="display:block">`;
+  s+=`<rect width="${PW}" height="${H_SVG}" fill="#fff"/>`;
+  s+=`<rect x="${goalL}" y="2" width="${goalR-goalL}" height="${GL-2}" fill="rgba(0,0,0,0.04)" stroke="#222" stroke-width="1.5"/>`;
+  s+=`<text x="${CX}" y="20" text-anchor="middle" fill="rgba(0,0,0,0.22)" font-size="10" font-weight="900" letter-spacing="3" font-family="monospace">GOAL</text>`;
+  s+=`<line x1="0" y1="${GL}" x2="${PW}" y2="${GL}" stroke="#222" stroke-width="2.5"/>`;
+  s+=`<line x1="0" y1="${GL}" x2="0" y2="${ftLine}" stroke="#222" stroke-width="2.5"/>`;
+  s+=`<line x1="${PW}" y1="${GL}" x2="${PW}" y2="${ftLine}" stroke="#222" stroke-width="2.5"/>`;
+  s+=`<line x1="0" y1="${ftLine}" x2="${PW}" y2="${ftLine}" stroke="#222" stroke-width="2.5"/>`;
+  s+=`<rect x="${paL}" y="${GL}" width="${paR-paL}" height="${paBot-GL}" fill="none" stroke="#222" stroke-width="2.2"/>`;
+  s+=`<rect x="${sbL}" y="${GL}" width="${sbR-sbL}" height="${sbBot-GL}" fill="none" stroke="#222" stroke-width="1.8"/>`;
+  s+=`<circle cx="${CX}" cy="${spotY}" r="6" fill="#222"/>`;
+  s+=`<path d="M 0 ${GL+12} A 12 12 0 0 0 12 ${GL}" fill="none" stroke="#222" stroke-width="1.5"/>`;
+  s+=`<path d="M ${PW} ${GL+12} A 12 12 0 0 1 ${PW-12} ${GL}" fill="none" stroke="#222" stroke-width="1.5"/>`;
+  s+=`<path d="M ${CX-arcDx} ${paBot} A ${arcR} ${arcR} 0 0 0 ${CX+arcDx} ${paBot}" fill="none" stroke="#222" stroke-width="3"/>`;
+  zones.forEach(z=>{s+=zr(z.x,z.y,z.w,z.h,z.id,st,mn);});
+  if(isCor){s+=football(bR?PW:0,GL,14);}
+  else{s+=football(bR?PW-35:35,370,14);}
+  return s+'</svg>';
+}
+
+function swingBox(allItems){
+  const rows=[
+    {label:'INSWING',filter:d=>d.swing==='Inswing'},
+    {label:'OUTSWING',filter:d=>d.swing==='Outswing'},
+    {label:'SHORT',filter:d=>d.isShort},
+  ];
+  function cellHTML(items){
+    if(!items.length)return`<span class="del-pct" style="color:#ddd">—</span>`;
+    const n=items.length,w=items.filter(d=>d.fcW).length,p=Math.round(w/n*100),c=fcColor(w/n);
+    return`<span class="del-pct" style="color:${c}">${p}%</span><span class="del-raw">${w}/${n}</span>`;
+  }
+  const bodyRows=rows.map(row=>{
+    const cells=['L','R'].map(s=>`<td>${cellHTML(allItems.filter(d=>d.side===s&&row.filter(d)))}</td>`).join('');
+    return`<tr><td class="type-cell">${row.label}</td>${cells}</tr>`;
+  }).join('');
+  return`<div class="del-box">
+    <div class="del-hdr"><span>DELIVERY BREAKDOWN</span><small>FC won % per type &amp; side</small></div>
+    <table class="del-tbl">
+      <thead><tr><th style="text-align:left">TYPE</th><th>LEFT</th><th>RIGHT</th></tr></thead>
+      <tbody>${bodyRows}</tbody>
+    </table>
+  </div>`;
+}
+
+function zoneLeg(items){
+  const st=zs(items);if(!Object.keys(st).length)return'';
+  return Object.entries(st).sort((a,b)=>b[1].n-a[1].n).map(([z,s])=>{
+    const p=Math.round(s.w/s.n*100),c=fcColor(s.w/s.n);
+    return`<div class="zone-row">
+      <span class="zone-id">${z}</span>
+      <div class="zone-bar-wrap"><div class="zone-bar" style="width:${p}%;background:${c}"></div></div>
+      <span class="zone-stat">${s.w}/${s.n} · ${p}%</span>
+      ${s.g?`<span style="font-size:9px;font-weight:900;color:${GRN}">${s.g}G</span>`:''}
+    </div>`;
+  }).join('');
+}
+
+function pStats(items){
+  if(!items.length)return null;
+  const n=items.length,fc=items.filter(d=>d.fcW).length,sh=items.filter(d=>d.shot).length,g=items.filter(d=>d.goal).length;
+  const zc={};items.forEach(d=>{if(d.zone)zc[d.zone]=(zc[d.zone]||0)+1;});
+  return{n,fc,pct:Math.round(fc/n*100),sh,g,topZ:Object.entries(zc).sort((a,b)=>b[1]-a[1]).slice(0,2).map(e=>e[0]).join('/')||'—'};
+}
+
+function playerSection(title,items){
+  const players=[...new Set(items.filter(d=>d.player).map(d=>d.player))];
+  if(!players.length)return`<div class="player-box"><div class="player-hdr"><span>${title}</span></div><div style="padding:12px 16px;font-size:11px;color:#ccc">No player data</div></div>`;
+  const rows=players.map(nm=>{
+    const all=items.filter(d=>d.player===nm),ls=pStats(all.filter(d=>d.side==='L')),rs=pStats(all.filter(d=>d.side==='R')),ts=pStats(all);
+    function sc2(s){
+      if(!s)return`<td style="text-align:center;color:#ddd">—</td>`;
+      const c=fcColor(s.pct/100);
+      return`<td style="text-align:center"><strong style="color:#000">${s.n}</strong> <span style="color:${c};font-weight:900">${s.pct}%</span> <span style="color:#999;font-size:10px;background:#f5f5f5;padding:1px 5px;border-radius:2px">${s.topZ}</span></td>`;
+    }
+    return`<tr>
+      <td style="font-size:13px;font-weight:900;color:#000">${nm}</td>
+      ${sc2(ls)}${sc2(rs)}
+      <td style="text-align:center">
+        <strong>${ts.n}</strong>
+        <span style="color:${fcColor(ts.pct/100)};font-weight:900;margin-left:6px">${ts.pct}%</span>
+        ${ts.sh?`<span style="color:#bbb;font-size:11px;margin-left:6px">${ts.sh}SH</span>`:''}
+        ${ts.g?`<span style="color:${GRN};font-weight:900;font-size:11px;margin-left:4px">${ts.g}G</span>`:''}
+      </td>
+    </tr>`;
+  }).join('');
+  return`<div class="player-box">
+    <div class="player-hdr"><span>${title}</span><small>n · FC% · top zone</small></div>
+    <div class="player-tbl-wrap"><table class="player-tbl">
+      <thead><tr><th style="text-align:left">PLAYER</th><th>LEFT SIDE</th><th>RIGHT SIDE</th><th>TOTAL</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function setSide(s){
+  sideF=s;
+  document.querySelectorAll('.sf-b').forEach(b=>b.classList.toggle('on',b.dataset.s===s));
+  renderMain();
+}
+
+function buildTabs(){
+  const tb=document.getElementById('tabs');tb.innerHTML='';
+  TABS.forEach(t=>{
+    const b=document.createElement('button');
+    b.className='sp-t'+(t.k===act?' on':'');
+    b.dataset.k=t.k;b.textContent=t.l;
+    b.onclick=()=>{act=t.k;document.querySelectorAll('.sp-t').forEach(x=>x.classList.toggle('on',x.dataset.k===t.k));renderMain();};
+    tb.appendChild(b);
+  });
+}
+
+function renderMain(){
+  const tab=TABS.find(t=>t.k===act),{isOff,isCor}=tab;
+  const all=D.filter(d=>(isOff?d.isOff:!d.isOff)&&(isCor?d.isCor:!d.isCor));
+  const items=all.filter(d=>d.side===sideF);
+  const n=items.length,won=items.filter(d=>d.fcW).length,sh=items.filter(d=>d.shot).length,g=items.filter(d=>d.goal).length;
+  const pctC=n?fcColor(won/n):'#aaa',pct=n?Math.round(won/n*100)+'%':'—';
+  const sideLabel=sideF==='L'?'LEFT SIDE':'RIGHT SIDE';
+
+  const cleg=[[GRN,'≥75%'],[YEL,'≥50%'],[AMB,'≥25%'],[RED,'<25%']]
+    .map(([c,l])=>`<span style="display:inline-flex;align-items:center;gap:3px"><span class="leg-swatch" style="border:2.5px solid ${c}"></span><span style="font-size:9px;color:#bbb">${l}</span></span>`).join('');
+
+  const statsCards=[
+    {l:'TOTAL',v:n,c:'#000'},
+    {l:'FC %',v:pct,c:pctC},
+    {l:'FC WON',v:n?won+'/'+n:'—',c:pctC},
+    {l:'SHOTS',v:sh,c:'#000'},
+    ...(g?[{l:isOff?'GOALS':'G. AGAINST',v:g,c:isOff?GRN:RED}]:[]),
+  ].map(({l,v,c})=>`<div class="sc"><div class="sc-l">${l}</div><div class="sc-v" style="color:${c}">${v}</div></div>`).join('');
+
+  document.getElementById('main').innerHTML=`
+    <div class="stats-row">${statsCards}</div>
+    <div class="panel">
+      <div class="panel-hdr"><span>AIK ${isOff?'OFF':'DEF'} ${isCor?'CORNERS':'FREE KICKS'} — ${sideLabel}</span></div>
+      <div style="border-bottom:2px solid #000">${makeSVG(items,isCor,sideF,isOff)}</div>
+      <div class="panel-body">
+        <div class="enc-leg">
+          <span style="font-size:9px;color:#bbb">CONTACTS</span>
+          <span style="font-size:9px;color:#555">many</span><span class="grad-bar"></span><span style="font-size:9px;color:#bbb">few</span>
+          <span style="color:#ddd">|</span>
+          <span style="font-size:9px;color:#bbb">FC WON %</span>
+          ${cleg}
+        </div>
+        <div class="fc-row">
+          <span style="font-size:9px;color:#bbb;font-weight:700;letter-spacing:.08em">FC WON</span>
+          <span class="fc-pct" style="color:${pctC}">${pct}</span>
+          <span class="fc-raw">${n?won+'/'+n:''}</span>
+          ${n?`<div class="fc-bar-wrap"><div class="fc-bar" style="width:${Math.round(won/n*100)}%;background:${pctC}"></div></div>`:''}
+        </div>
+        ${zoneLeg(items)}
+      </div>
+    </div>
+    <div style="max-width:660px;margin:0 auto">${swingBox(all)}</div>`;
+}
+
+function renderPlayers(){
+  document.getElementById('players').innerHTML=`
+    <div class="player-section">
+      <div style="font-size:13px;font-weight:900;color:#000;letter-spacing:.08em;margin-bottom:.5rem">PLAYER BREAKDOWN — ATTACKING</div>
+      ${playerSection('OFF CORNERS',D.filter(d=>d.isOff&&d.isCor))}
+      ${playerSection('OFF FREE KICKS',D.filter(d=>d.isOff&&!d.isCor))}
+    </div>`;
+}
+</script>
+</body>
+</html>
