@@ -12,15 +12,11 @@ body{font-family:monospace;background:#f5f5f5;padding:1rem}
 h1{font-size:22px;font-weight:900;letter-spacing:.15em;text-align:center;margin-bottom:4px}
 .sub{font-size:10px;color:#999;letter-spacing:.1em;text-align:center;margin-bottom:1.5rem}
 
-/* Upload area */
-.upload-area{border:2px dashed #ccc;border-radius:8px;padding:1.5rem;text-align:center;margin-bottom:1.5rem;cursor:pointer;transition:border-color .15s,background .15s}
-.upload-area:hover,.upload-area.drag{border-color:#000;background:#fafafa}
-.upload-area input{display:none}
-.upload-area label{cursor:pointer;font-size:11px;font-weight:700;letter-spacing:.08em;color:#888}
-.upload-area label span{display:inline-block;margin-top:6px;padding:6px 18px;border:2px solid #000;background:#000;color:#FFD700;font-size:10px;font-weight:900;letter-spacing:.1em;cursor:pointer}
-.upload-area label span:hover{background:#333}
-.file-name{margin-top:8px;font-size:10px;color:#aaa;letter-spacing:.06em}
-.upload-error{color:#CC2211;font-size:11px;margin-top:6px;font-weight:700}
+/* Loading / error states */
+.state-box{text-align:center;padding:3rem 1rem;color:#bbb;font-size:13px;letter-spacing:.06em}
+.state-box.err{color:#CC2211;font-weight:700}
+.spinner{display:inline-block;width:20px;height:20px;border:2px solid #ddd;border-top-color:#000;border-radius:50%;animation:spin .7s linear infinite;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
 
 /* Tabs */
 .tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:1rem;justify-content:center}
@@ -48,7 +44,6 @@ h1{font-size:22px;font-weight:900;letter-spacing:.15em;text-align:center;margin-
 
 /* Legend */
 .enc-leg{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
-.enc-leg span{font-size:9px;color:#bbb}
 .grad-bar{width:60px;height:12px;background:linear-gradient(to right,rgb(60,60,60),rgb(210,210,210));border-radius:2px;display:inline-block;vertical-align:middle}
 .leg-swatch{width:18px;height:12px;display:inline-block;background:rgba(0,0,0,.03);border-radius:2px;vertical-align:middle}
 
@@ -89,8 +84,8 @@ table.player-tbl{width:100%;border-collapse:collapse;min-width:420px}
 table.player-tbl th{padding:7px 12px;font-size:9px;font-weight:700;color:#bbb;letter-spacing:.08em;border-bottom:2px solid #eee;white-space:nowrap}
 table.player-tbl td{padding:9px 12px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
 
-/* Empty state */
-.empty{text-align:center;padding:3rem 1rem;color:#bbb;font-size:13px;letter-spacing:.06em}
+/* Last updated badge */
+.updated{font-size:9px;color:#bbb;letter-spacing:.06em;text-align:center;margin-top:1.5rem;padding-bottom:1rem}
 </style>
 </head>
 <body>
@@ -98,15 +93,9 @@ table.player-tbl td{padding:9px 12px;border-bottom:1px solid #f0f0f0;vertical-al
   <h1>AIK SET PIECES</h1>
   <div class="sub" id="subtitle">ALLSVENSKAN 2026</div>
 
-  <!-- Upload -->
-  <div class="upload-area" id="dropZone">
-    <label>
-      <input type="file" id="csvInput" accept=".csv">
-      <div style="font-size:13px;color:#888;margin-bottom:10px;">Drop CSV here or</div>
-      <span>UPLOAD CSV</span>
-    </label>
-    <div class="file-name" id="fileName">No file loaded</div>
-    <div class="upload-error" id="uploadError"></div>
+  <div id="stateBox" class="state-box">
+    <div class="spinner"></div>
+    <div>Loading data...</div>
   </div>
 
   <div id="dashWrap" style="display:none">
@@ -120,13 +109,11 @@ table.player-tbl td{padding:9px 12px;border-bottom:1px solid #f0f0f0;vertical-al
     </div>
     <div id="main"></div>
     <div id="players" style="margin-top:1.5rem"></div>
+    <div class="updated" id="lastUpdated"></div>
   </div>
-
-  <div id="emptyState" class="empty">Upload a CSV file to load the dashboard</div>
 </div>
 
 <script>
-// ── Colours ──────────────────────────────────────────────────────
 const YEL='#FFD700',GRN='#22AA44',AMB='#FF8800',RED='#CC2211';
 const TABS=[
   {k:'OC',l:'OFF CORNERS',   isOff:true, isCor:true},
@@ -136,68 +123,66 @@ const TABS=[
 ];
 let D=[],act='OC',sideF='L';
 
-// ── CSV parse ─────────────────────────────────────────────────────
+// ── Parse a single CSV row ────────────────────────────────────────
 function parseRow(row){
-  const i=row.Ungrouped||'';
-  const t=row.Row||'';
-  return{
-    t,i,
-    isOff:t.startsWith('OFF'),
-    isCor:t.includes('CORNER'),
+  const i=row.Ungrouped||'',t=row.Row||'';
+  return{t,i,
+    isOff:t.startsWith('OFF'),isCor:t.includes('CORNER'),
     side:i.includes('Right Side')?'R':'L',
     swing:i.includes('Inswing')?'Inswing':i.includes('Outswing')?'Outswing':'Short',
     isShort:i.toLowerCase().includes('short'),
     zone:(m=>m?'A'+m[1]:null)(i.match(/\bA(\d)\b/)),
-    fcW:i.includes('First Contact Won'),
-    shot:i.includes('Shot'),
-    goal:i.includes('Goal'),
-    sb:i.includes('2nd ball'),
+    fcW:i.includes('First Contact Won'),shot:i.includes('Shot'),
+    goal:i.includes('Goal'),sb:i.includes('2nd ball'),
     player:(i.match(/[A-Z]\. [A-Z][a-z]+/)||[null])[0]
   };
 }
 
-function loadCSV(file){
-  document.getElementById('uploadError').textContent='';
-  Papa.parse(file,{
-    header:true,
-    skipEmptyLines:true,
-    complete(results){
-      const rows=results.data.filter(r=>r.Row&&(r.Row.includes('CORNER')||r.Row.includes('SFK')));
-      if(!rows.length){
-        document.getElementById('uploadError').textContent='No set piece rows found. Check CSV format.';
-        return;
-      }
-      D=rows.map(parseRow);
-      document.getElementById('fileName').textContent=file.name+' — '+D.length+' instances loaded';
+// ── Auto-fetch data.csv from same directory ───────────────────────
+async function loadData(){
+  try{
+    // Cache-bust so GitHub Pages always serves the latest file
+    const res=await fetch('./data.csv?v='+Date.now());
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const text=await res.text();
+    Papa.parse(text,{
+      header:true,
+      skipEmptyLines:true,
+      complete(results){
+        const rows=results.data.filter(r=>r.Row&&(r.Row.includes('CORNER')||r.Row.includes('SFK')));
+        if(!rows.length){
+          showError('data.csv found but no set piece rows detected. Check the Row column.');
+          return;
+        }
+        D=rows.map(parseRow);
 
-      // Extract season label from Timeline column
-      const timelines=[...new Set(results.data.map(r=>r.Timeline).filter(Boolean))];
-      if(timelines.length) document.getElementById('subtitle').textContent=timelines.slice(0,3).join(' · ');
+        // Season label from Timeline column
+        const timelines=[...new Set(results.data.map(r=>r.Timeline).filter(Boolean))];
+        if(timelines.length) document.getElementById('subtitle').textContent=timelines.slice(0,4).join(' · ');
 
-      document.getElementById('dashWrap').style.display='block';
-      document.getElementById('emptyState').style.display='none';
-      buildTabs();
-      renderMain();
-      renderPlayers();
-    },
-    error(){
-      document.getElementById('uploadError').textContent='Could not parse CSV. Make sure it uses the correct export format.';
-    }
-  });
+        // Last updated
+        document.getElementById('lastUpdated').textContent='DATA LOADED · '+D.length+' INSTANCES';
+
+        document.getElementById('stateBox').style.display='none';
+        document.getElementById('dashWrap').style.display='block';
+        buildTabs();
+        renderMain();
+        renderPlayers();
+      },
+      error(err){showError('Could not parse data.csv: '+err.message);}
+    });
+  }catch(err){
+    showError('Could not load data.csv — make sure it is in the same folder as index.html in your repository.<br><br>Error: '+err.message);
+  }
 }
 
-// ── Upload wiring ─────────────────────────────────────────────────
-document.getElementById('csvInput').addEventListener('change',e=>{
-  if(e.target.files[0]) loadCSV(e.target.files[0]);
-});
-const dz=document.getElementById('dropZone');
-dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag');});
-dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
-dz.addEventListener('drop',e=>{
-  e.preventDefault();dz.classList.remove('drag');
-  const f=e.dataTransfer.files[0];
-  if(f&&f.name.endsWith('.csv')) loadCSV(f);
-});
+function showError(msg){
+  const b=document.getElementById('stateBox');
+  b.classList.add('err');
+  b.innerHTML=msg;
+}
+
+loadData();
 
 // ── Helpers ───────────────────────────────────────────────────────
 function fcColor(p){return p>=.75?GRN:p>=.5?YEL:p>=.25?AMB:RED;}
@@ -215,7 +200,7 @@ function maxN(st){const v=Object.values(st).map(s=>s.n);return v.length?Math.max
 function zFill(n,mn){if(!n||!mn)return null;const t=n/mn,v=Math.round(210-150*t);return{rgb:`rgb(${v},${v},${v})`,dark:v<130};}
 function zBorder(s){if(!s||!s.n)return'#ccc';return fcColor(s.w/s.n);}
 
-// ── Football SVG icon ────────────────────────────────────────────
+// ── Football icon ─────────────────────────────────────────────────
 let _bid=0;
 function football(cx,cy,r){
   const id='b'+(_bid++);
@@ -228,21 +213,15 @@ function football(cx,cy,r){
   s+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff" stroke="#222" stroke-width="1.5"/>`;
   s+=`<g clip-path="url(#${id})">`;
   s+=`<polygon points="${pt(cx,cy,r*0.37,-90)}" fill="#111"/>`;
-  for(let i=0;i<5;i++){
-    const a=(-90+36+i*72)*Math.PI/180,d=r*0.84;
-    s+=`<polygon points="${pt(cx+d*Math.cos(a),cy+d*Math.sin(a),r*0.37,-90+36+i*72)}" fill="#111"/>`;
-  }
+  for(let i=0;i<5;i++){const a=(-90+36+i*72)*Math.PI/180,d=r*0.84;s+=`<polygon points="${pt(cx+d*Math.cos(a),cy+d*Math.sin(a),r*0.37,-90+36+i*72)}" fill="#111"/>`;}
   s+=`</g><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#222" stroke-width="1.5"/>`;
   return s;
 }
 
 // ── Pitch constants ───────────────────────────────────────────────
 const PW=660,H_SVG=420,GL=30,CX=330;
-const paL=106,paR=554,paBot=214;
-const sbL=228,sbR=433,sbBot=91;
-const goalL=265,goalR=395;
-const spotY=152,arcR=102,arcDx=81;
-const ftLine=420;
+const paL=106,paR=554,paBot=214,sbL=228,sbR=433,sbBot=91;
+const goalL=265,goalR=395,spotY=152,arcR=102,arcDx=81,ftLine=420;
 
 const CZ=[
   {id:'A7',x:138,y:GL,   w:90,h:spotY-GL},
@@ -262,7 +241,7 @@ const FZ=[
   {id:'A3',x:380,y:sbBot,w:130,h:220},
 ];
 
-function mirrorZones(zones){return zones.map(z=>({...z,x:PW-z.x-z.w}));}
+function mirrorZones(z){return z.map(z=>({...z,x:PW-z.x-z.w}));}
 function ballRight(side,isOff){return(isOff&&side==='R')||(!isOff&&side==='L');}
 function getZones(isCor,side,isOff){return ballRight(side,isOff)?mirrorZones(isCor?CZ:FZ):isCor?CZ:FZ;}
 
@@ -305,7 +284,6 @@ function makeSVG(items,isCor,side,isOff){
   return s+'</svg>';
 }
 
-// ── Delivery breakdown ────────────────────────────────────────────
 function swingBox(allItems){
   const rows=[
     {label:'INSWING',filter:d=>d.swing==='Inswing'},
@@ -330,7 +308,6 @@ function swingBox(allItems){
   </div>`;
 }
 
-// ── Zone legend ───────────────────────────────────────────────────
 function zoneLeg(items){
   const st=zs(items);if(!Object.keys(st).length)return'';
   return Object.entries(st).sort((a,b)=>b[1].n-a[1].n).map(([z,s])=>{
@@ -344,13 +321,13 @@ function zoneLeg(items){
   }).join('');
 }
 
-// ── Player section ────────────────────────────────────────────────
 function pStats(items){
   if(!items.length)return null;
   const n=items.length,fc=items.filter(d=>d.fcW).length,sh=items.filter(d=>d.shot).length,g=items.filter(d=>d.goal).length;
   const zc={};items.forEach(d=>{if(d.zone)zc[d.zone]=(zc[d.zone]||0)+1;});
   return{n,fc,pct:Math.round(fc/n*100),sh,g,topZ:Object.entries(zc).sort((a,b)=>b[1]-a[1]).slice(0,2).map(e=>e[0]).join('/')||'—'};
 }
+
 function playerSection(title,items){
   const players=[...new Set(items.filter(d=>d.player).map(d=>d.player))];
   if(!players.length)return`<div class="player-box"><div class="player-hdr"><span>${title}</span></div><div style="padding:12px 16px;font-size:11px;color:#ccc">No player data</div></div>`;
@@ -381,7 +358,6 @@ function playerSection(title,items){
   </div>`;
 }
 
-// ── Render ────────────────────────────────────────────────────────
 function setSide(s){
   sideF=s;
   document.querySelectorAll('.sf-b').forEach(b=>b.classList.toggle('on',b.dataset.s===s));
@@ -389,8 +365,7 @@ function setSide(s){
 }
 
 function buildTabs(){
-  const tb=document.getElementById('tabs');
-  tb.innerHTML='';
+  const tb=document.getElementById('tabs');tb.innerHTML='';
   TABS.forEach(t=>{
     const b=document.createElement('button');
     b.className='sp-t'+(t.k===act?' on':'');
@@ -408,7 +383,8 @@ function renderMain(){
   const pctC=n?fcColor(won/n):'#aaa',pct=n?Math.round(won/n*100)+'%':'—';
   const sideLabel=sideF==='L'?'LEFT SIDE':'RIGHT SIDE';
 
-  const cleg=[[GRN,'≥75%'],[YEL,'≥50%'],[AMB,'≥25%'],[RED,'<25%']].map(([c,l])=>`<span style="display:inline-flex;align-items:center;gap:3px"><span class="leg-swatch" style="border:2.5px solid ${c}"></span><span style="font-size:9px;color:#bbb">${l}</span></span>`).join('');
+  const cleg=[[GRN,'≥75%'],[YEL,'≥50%'],[AMB,'≥25%'],[RED,'<25%']]
+    .map(([c,l])=>`<span style="display:inline-flex;align-items:center;gap:3px"><span class="leg-swatch" style="border:2.5px solid ${c}"></span><span style="font-size:9px;color:#bbb">${l}</span></span>`).join('');
 
   const statsCards=[
     {l:'TOTAL',v:n,c:'#000'},
@@ -425,10 +401,10 @@ function renderMain(){
       <div style="border-bottom:2px solid #000">${makeSVG(items,isCor,sideF,isOff)}</div>
       <div class="panel-body">
         <div class="enc-leg">
-          <span>CONTACTS</span>
-          <span>many</span><span class="grad-bar"></span><span>few</span>
+          <span style="font-size:9px;color:#bbb">CONTACTS</span>
+          <span style="font-size:9px;color:#555">many</span><span class="grad-bar"></span><span style="font-size:9px;color:#bbb">few</span>
           <span style="color:#ddd">|</span>
-          <span>FC WON %</span>
+          <span style="font-size:9px;color:#bbb">FC WON %</span>
           ${cleg}
         </div>
         <div class="fc-row">
