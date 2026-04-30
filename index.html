@@ -149,7 +149,7 @@ async function loadData(){
       header:true,
       skipEmptyLines:true,
       complete(results){
-        const rows=results.data.filter(r=>r.Row&&(r.Row.includes('CORNER')||r.Row.includes('SFK')));
+        const rows=results.data.filter(r=>r.Row&&(r.Row.includes('CORNER')||r.Row.includes('FK')));
         if(!rows.length){
           showError('data.csv found but no set piece rows detected. Check the Row column.');
           return;
